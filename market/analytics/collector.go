@@ -561,16 +561,67 @@ func (c *Collector) Stats() CollectorStats {
 }
 
 // CollectorStats holds statistics about the collector's operation.
-type CollectorStats struct {
-	BufferedSamples int           `json:"buffered_samples"`
-	FlushedSamples  int64         `json:"flushed_samples"`
-	Errors          int64         `json:"errors"`
-	Dropped         int64         `json:"dropped"`
-	FlushInterval   time.Duration `json:"flush_interval"`
-	BatchSize       int           `json:"batch_size"`
-	BacklogUsed     int           `json:"backlog_used"`
-	BacklogMax      int           `json:"backlog_max"`
-	BacklogPct      float64       `json:"backlog_pct"`
+// Additions to the Collector struct
+type Collector struct {
+	mu            sync.RWMutex
+	samples       []MetricSample
+	batchSize     int
+	flushInterval time.Duration
+	maxBacklog    int
+	maxTagCardinality int // NEW: Added cardinality limit
+	droppedCardinality int64 // NEW: Counter for cardinality drops
+	// ... existing fields
+}
+
+// Update NewCollector defaults
+func NewCollector() *Collector {
+	return &Collector{
+		samples:           make([]MetricSample, 0, 1024),
+		batchSize:         100,
+		flushInterval:     10 * time.Second,
+		maxBacklog:        10000,
+		maxTagCardinality: 100, // NEW: Default cardinality limit
+		stopCh:            make(chan struct{}),
+	}
+}
+
+// NEW: Setter for cardinality limit
+func (c *Collector) WithMaxTagCardinality(n int) *Collector {
+	c.maxTagCardinality = n
+	return c
+}
+
+// Modified Record method
+func (c *Collector) Record(sample MetricSample) bool {
+	if c.enricher != nil {
+		c.enricher(&sample)
+	}
+	
+	// NEW: Cardinality guard before queuing
+	if len(sample.Tags) > c.maxTagCardinality {
+		c.mu.Lock()
+		c.droppedCardinality++
+		c.mu.Unlock()
+		return false
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.samples) >= c.maxBacklog {
+		c.dropped++
+		return false
+	}
+	c.samples = append(c.samples, sample)
+	return true
+}
+
+// Update Stats() to include new metric
+func (c *Collector) Stats() CollectorStats {
+    // ... inside Stats()
+    return CollectorStats{
+        // ... existing fields
+        DroppedCardinality: c.droppedCardinality,
+    }
 }
 
 // SamplingConfig configures how metrics are sampled to reduce volume.

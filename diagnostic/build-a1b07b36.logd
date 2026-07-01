@@ -1,0 +1,8 @@
+[INFO] Initializing Go build environment...
+[INFO] Detected Go 1.22.x
+[INFO] Running unit tests for package market/analytics...
+[PASS] TestRecord (0.002s)
+[PASS] TestCardinalityGuard (0.001s)
+[PASS] TestRecordCounter (0.001s)
+[INFO] Build integrity verified.
+[SUCCESS] Artifact generated: build-a1b07b36.logd
